@@ -2,6 +2,7 @@
 Desktop.ini
 .ipynb_checkpoints
 */.ipyb_checkpoints/*n
+__pycache__/
 
 # Intermediate data prep files
 metadata.tsv.gz
