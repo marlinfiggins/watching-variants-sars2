@@ -4,7 +4,7 @@
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
-
+from pango_aliasor.aliasor import Aliasor
 
 import argparse
 import yaml
@@ -102,6 +102,44 @@ def clean_metadata(
     return metadata
 
 
+ALIASOR = Aliasor()
+
+
+def descends_from(parent, child):
+    # Handles thingsl ike BQ.1 , BQ.1.1
+    if parent in child:
+        return True
+
+    # Otherwise, we need to unwrap them
+    uparent = ALIASOR.uncompress(parent)
+    uchild = ALIASOR.uncompress(child)
+    return uparent in uchild
+
+
+def expand_variant_map(lineages: List[str], variant_map: Dict[str, str]):
+    _variant_map = variant_map.copy()
+    _parent_map = dict()
+    # Which lineages do we include descendents of
+    keep_child_of = [k[:-1] for k in variant_map.keys() if k.endswith("*")]
+
+    # Check whether each lineage descends from lineage to be expanded
+    for lineage in lineages:
+        if lineage in variant_map:  # Things already present can be ignored
+            continue
+        # For things not in map but descending from parent
+        for parent in keep_child_of:
+            if descends_from(parent, lineage):
+                if lineage in _parent_map:  # If we've already seen this
+                    if descends_from(_parent_map[lineage], parent):
+                        # Make sure we put this in the most nested
+                        _parent_map[lineage] = parent
+                        _variant_map[lineage] = variant_map[parent + "*"]
+                else:  # We've never seen this variant
+                    _variant_map[lineage] = variant_map[parent + "*"]
+                    _parent_map[lineage] = parent
+    return _variant_map
+
+
 def map_variant(clade: str, lineage: str, variant_map: Dict[str, str]) -> str:
     # If smaller level is present in mapping, use that
     if lineage in variant_map:
@@ -170,6 +208,12 @@ def get_sequence_counts(
 
     metadata = pd.concat(metadata_chunks, ignore_index=True)
 
+    variant_map = expand_variant_map(
+        metadata["Nextclade_pango"].unique(), variant_map
+    )
+    print(variant_map)
+    print(variant_map["BQ.1.1.24"])
+    print(variant_map["BQ.1.23"])
     metadata = map_variants(metadata, variant_map)
 
     seq_counts = count_metadata(metadata, spatial_levels[-1])
